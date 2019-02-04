@@ -219,11 +219,13 @@ mu <- mean(edx$rating)
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarize(b_i = mean(rating - mu))
+
 movie_avgs %>% qplot(b_i, geom ="histogram", bins = 10, data = ., color = I("black"))
 
-predicted_ratings <- mu + validation %>% 
+predicted_ratings <- validation %>% 
   left_join(movie_avgs, by='movieId') %>%
-  .$b_i
+  mutate(pred=mu+b_i)%>%
+  .$pred
 
 model_1_rmse <- RMSE(predicted_ratings, validation$rating)
 rmse_results <- bind_rows(rmse_results,
@@ -237,7 +239,7 @@ The table shows  a slight improvement of the prediction using the movie effect, 
 Now, we should add also the user effect into the model as usually different users will rate differently:
 
 ```{r,echo=FALSE, cache=TRUE}
-user_avgs <- validation %>%
+user_avgs <- edx %>%
   left_join(movie_avgs, by='movieId') %>%
   group_by(userId) %>%
   summarize(b_u = mean(rating - mu - b_i))
@@ -255,12 +257,12 @@ rmse_results <- bind_rows(rmse_results,
 rmse_results %>% knitr::kable()
 ```
 
-In this case the prediction have highly improved since the RMSE is equal to 0.8292.
+In this case the prediction have highly improved since the RMSE is equal to 0.8653.
 
 However, the analysis does not stop here since we can add also the genre effect to the model as this factor impacts also the rating values:
 
 ```{r,echo=FALSE, cache=TRUE}
-genres_avgs <- validation %>%
+genres_avgs <- edx %>%
   left_join(movie_avgs, by='movieId') %>%
   left_join(user_avgs, by='userId') %>%
   group_by(genres) %>%
@@ -280,7 +282,7 @@ rmse_results <- bind_rows(rmse_results,
 rmse_results %>% knitr::kable()
 ```
 
-Here, we notice that result are slightly improved with RMSE equaling to 0.8285.
+Here, we notice that result are slightly improved with RMSE equaling to 0.8649.
 
 ##Regularization
 
@@ -529,7 +531,7 @@ rmse_results %>% knitr::kable()
  
 # Results and Prediction table
 
-Now, that we have the final model with RMSE of less then 0.865, we will continue to produce the whole prediction table, However, since it will be impossible to show the whole table, here is the predicted ratings for each movies rated by user with userId=74:
+Now, that we have the final model with RMSE of less then 0.865, we will continue to produce the whole prediction table, However, since it will be impossible to show the whole table, here is the predicted ratings for each movies rated by user with userId=323:
 
 ```{r message=FALSE, warning=FALSE, cache=TRUE, paged.print=FALSE, echo=FALSE}
 
@@ -548,30 +550,32 @@ b_g <- edx %>%
   group_by(genres) %>%
   summarize(b_g = sum(rating - b_i- b_u - mu)/(n()+lambda_g))
 
-predicted_ratings_rep <- 
-  movielens %>% 
+#or just on the validation set  with predicted ratings (predicted ratings=mu+b_i+b_u+b_g)####
+predicted_ratings_rep_validation <- 
+  validation %>% 
   left_join(b_i, by = "movieId") %>%
   left_join(b_u, by = "userId") %>%
   left_join(b_g, by = "genres") %>%
   mutate(pred_c=ifelse((mu + b_i+b_u+b_g)>5,5,mu + b_i+b_u+b_g))
 
-predicted_ratings_rep%>% filter(userId==74)%>%select(userId,title,rating,predicted_ratings=pred_c) 
+#predicted ratings for userId=323
+predicted_ratings_rep_validation%>% filter(userId==323)%>%select(userId,title,rating,predicted_ratings=pred_c) 
 
 ```
 
 
 
-And the aggregated ratings by movie for top 20 movies :
+And the aggregated ratings by movie for top 20 movies on validation set:
 
 
 ```{r,echo=FALSE, cache=TRUE}
-predicted_ratings_rep_bymovie <- predicted_ratings_rep %>%
+predicted_ratings_rep_bymovie_validation_set <- predicted_ratings_rep_validation %>%
   group_by(title) %>%
 summarize(n = n(), avg_ratings = mean(rating), pred_ratings = mean(pred_c)) %>%
   arrange(desc(n)) %>%
   mutate(title = reorder(title, avg_ratings)) 
 
-head(predicted_ratings_rep_bymovie, n=20L) 
+head(predicted_ratings_rep_bymovie_validation_set, n=20L) 
 
 ```
 

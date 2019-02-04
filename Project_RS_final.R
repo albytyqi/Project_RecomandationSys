@@ -140,11 +140,14 @@ mu <- mean(edx$rating)
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarize(b_i = mean(rating - mu))
+
 movie_avgs %>% qplot(b_i, geom ="histogram", bins = 10, data = ., color = I("black"))
 
-predicted_ratings <- mu + validation %>% 
+predicted_ratings <-validation %>% 
   left_join(movie_avgs, by='movieId') %>%
-  .$b_i
+  mutate(pred = mu + b_i) %>%
+  .$pred
+  
 #output: Table with RMSE
 model_1_rmse <- RMSE(predicted_ratings, validation$rating)
 rmse_results <- bind_rows(rmse_results,
@@ -154,7 +157,7 @@ rmse_results %>% knitr::kable()
 
 #naive rmse+movie effect+user effect
 
-user_avgs <- validation %>%
+user_avgs <- edx %>%
   left_join(movie_avgs, by='movieId') %>%
   group_by(userId) %>%
   summarize(b_u = mean(rating - mu - b_i))
@@ -172,7 +175,7 @@ rmse_results <- bind_rows(rmse_results,
 rmse_results %>% knitr::kable()
 
 #naive rmse+movie effect+user effect +genres effect
-genres_avgs <- validation %>%
+genres_avgs <- edx %>%
   left_join(movie_avgs, by='movieId') %>%
   left_join(user_avgs, by='userId') %>%
   group_by(genres) %>%
@@ -320,16 +323,18 @@ rmse_results %>% knitr::kable()
 
 # checking results #creating predicted ratings #
 
-b_i <- validation %>%   group_by(movieId) %>%  summarize(b_i = sum(rating - mu)/(n()+lambda_i))
+b_i <- edx %>%   group_by(movieId) %>%  summarize(b_i = sum(rating - mu)/(n()+lambda_i))
 
-b_u <- validation %>%   left_join(b_i, by="movieId") %>%  group_by(userId) %>%
+b_u <- edx %>%   left_join(b_i, by="movieId") %>%  group_by(userId) %>%
   summarize(b_u = sum(rating - b_i - mu)/(n()+lambda_u))
 
-b_g <- validation %>%   left_join(b_i, by="movieId") %>%
+b_g <- edx %>%   left_join(b_i, by="movieId") %>%
   left_join(b_u, by="userId")%>%  group_by(genres) %>%
   summarize(b_g = sum(rating - b_i- b_u - mu)/(n()+lambda_g))
 
-predicted_ratings_rep <-   validation %>%   left_join(b_i, by = "movieId") %>%
+#because we are just checking the predicted values not comparing to real values, here we use edx not validation set
+
+predicted_ratings_rep <-   edx %>%   left_join(b_i, by = "movieId") %>%
   left_join(b_u, by = "userId") %>%  left_join(b_g, by = "genres") %>%
   mutate(pred=mu + b_i+b_u+b_g)
 
@@ -416,16 +421,39 @@ predicted_ratings_rep <-
   left_join(b_g, by = "genres") %>%
   mutate(pred_c=ifelse((mu + b_i+b_u+b_g)>5,5,mu + b_i+b_u+b_g))
 
+#or just on the validation set  with predicted ratings (predicted ratings=mu+b_i+b_u+b_g)####
+predicted_ratings_rep_validation <- 
+  validation %>% 
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  left_join(b_g, by = "genres") %>%
+  mutate(pred_c=ifelse((mu + b_i+b_u+b_g)>5,5,mu + b_i+b_u+b_g))
+
+#predicted ratings for userId=323
+predicted_ratings_rep_validation%>% filter(userId==323)%>%select(userId,title,rating,predicted_ratings=pred_c) 
+
 #whole table with predicted ratings for each movie with 10K rows####
 predicted_ratings_rep_bymovie <- predicted_ratings_rep %>%group_by(title) %>%
 summarize(n = n(), avg_ratings = mean(rating), pred_ratings = mean(pred_c)) %>%
   arrange(desc(n)) %>%
   mutate(title = reorder(title, avg_ratings)) 
 
+#whole table with predicted ratings for each movieon Validation set####
+predicted_ratings_rep_bymovie_validation_set <- predicted_ratings_rep_validation %>%group_by(title) %>%
+  summarize(n = n(), avg_ratings = mean(rating), pred_ratings = mean(pred_c)) %>%
+  arrange(desc(n)) %>%
+  mutate(title = reorder(title, avg_ratings)) 
+
 #snapshot of 20 movie prediction####
 print("snapshot of 20 movie prediction")
 head(predicted_ratings_rep_bymovie,n=20L)
+
+#snapshot of 20 movie prediction on validation set####
+head(predicted_ratings_rep_bymovie_validation_set,n=20L)
+
 #snapshot of predicted rating for 20 first ratings by timestamp####
 print("snapshot of predicted rating for 20 first ratings by timestamp")
 predicted_ratings_rep%>% arrange(timestamp) %>% select(userId,movieId,rating, timestamp,title,genres,pred_c)%>%head(n=20L)
-                                                                        
+
+#snapshot of predicted rating for 20 first ratings by timestamp on validation set ####
+predicted_ratings_rep_validation%>% arrange(timestamp) %>% select(userId,movieId,rating, timestamp,title,genres,pred_c)%>%head(n=20L)
